@@ -20,7 +20,6 @@ export class ChatContextServer {
     
     // Rate limiting: 100 requests per minute per IP
     this.rateLimiter = new RateLimiterMemory({
-      keyGenerator: (req: Request) => req.ip,
       points: 100,
       duration: 60,
     });
@@ -42,9 +41,10 @@ export class ChatContextServer {
     // Apply rate limiting to all routes
     this.router.use(async (req: Request, res: Response, next) => {
       try {
-        await this.rateLimiter.consume(req.ip);
+        const key = req.ip || req.socket.remoteAddress || 'unknown';
+        await this.rateLimiter.consume(key);
         next();
-      } catch (rateLimiterRes) {
+      } catch (rateLimiterRes: any) {
         res.status(429).json({
           error: 'Too many requests',
           retryAfter: Math.round(rateLimiterRes.msBeforeNext / 1000) || 1,
@@ -54,26 +54,24 @@ export class ChatContextServer {
 
     // Session Management Routes
     this.router.post('/sessions', this.createSession.bind(this));
+    
+    // Search & Query Routes (phải đi TRƯỚC :id routes)
+    this.router.get('/sessions/search', this.searchSessions.bind(this));
+    this.router.get('/sessions/recent', this.getRecentSessions.bind(this));
+    this.router.post('/sessions/find-similar', this.findSimilarSessions.bind(this));
+    this.router.get('/sessions/by-agent/:agentId', this.getSessionsByAgent.bind(this));
+    this.router.post('/sessions/merge', this.mergeSessions.bind(this));
+    this.router.post('/sessions/bulk-import', this.bulkImportSessions.bind(this));
+    this.router.post('/sessions/cleanup', this.cleanupOldSessions.bind(this));
+    
+    // Generic Session Routes (phải đi SAU specific routes)
     this.router.get('/sessions/:id', this.getSession.bind(this));
     this.router.put('/sessions/:id', this.updateSession.bind(this));
     this.router.delete('/sessions/:id', this.deleteSession.bind(this));
 
-    // Search & Query Routes
-    this.router.get('/sessions/search', this.searchSessions.bind(this));
-    this.router.get('/sessions/recent', this.getRecentSessions.bind(this));
-    this.router.post('/sessions/find-similar', this.findSimilarSessions.bind(this));
-
-    // Agent-specific Routes
-    this.router.get('/sessions/by-agent/:agentId', this.getSessionsByAgent.bind(this));
-    this.router.post('/sessions/merge', this.mergeSessions.bind(this));
-
     // Analytics Routes
     this.router.get('/analytics/stats', this.getAnalytics.bind(this));
     this.router.get('/analytics/usage', this.getUsageAnalytics.bind(this));
-
-    // Utility Routes
-    this.router.post('/sessions/bulk-import', this.bulkImportSessions.bind(this));
-    this.router.post('/sessions/cleanup', this.cleanupOldSessions.bind(this));
   }
 
   private async createSession(req: Request, res: Response): Promise<void> {
@@ -133,7 +131,7 @@ export class ChatContextServer {
       this.logger.error('Failed to create session:', error);
       res.status(500).json({
         error: 'Failed to create session',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -164,7 +162,7 @@ export class ChatContextServer {
       this.logger.error('Failed to get session:', error);
       res.status(500).json({
         error: 'Failed to retrieve session',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -211,7 +209,7 @@ export class ChatContextServer {
       this.logger.error('Failed to update session:', error);
       res.status(500).json({
         error: 'Failed to update session',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -232,7 +230,7 @@ export class ChatContextServer {
       this.logger.error('Failed to delete session:', error);
       res.status(500).json({
         error: 'Failed to delete session',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -289,7 +287,7 @@ export class ChatContextServer {
       this.logger.error('Failed to search sessions:', error);
       res.status(500).json({
         error: 'Failed to search sessions',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -318,7 +316,7 @@ export class ChatContextServer {
       this.logger.error('Failed to get recent sessions:', error);
       res.status(500).json({
         error: 'Failed to get recent sessions',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -351,7 +349,7 @@ export class ChatContextServer {
       this.logger.error('Failed to find similar sessions:', error);
       res.status(500).json({
         error: 'Failed to find similar sessions',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -372,7 +370,7 @@ export class ChatContextServer {
       this.logger.error('Failed to get sessions by agent:', error);
       res.status(500).json({
         error: 'Failed to get sessions by agent',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -399,7 +397,7 @@ export class ChatContextServer {
       this.logger.error('Failed to merge sessions:', error);
       res.status(500).json({
         error: 'Failed to merge sessions',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -413,7 +411,7 @@ export class ChatContextServer {
       this.logger.error('Failed to get analytics:', error);
       res.status(500).json({
         error: 'Failed to get analytics',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -430,7 +428,7 @@ export class ChatContextServer {
       this.logger.error('Failed to get usage analytics:', error);
       res.status(500).json({
         error: 'Failed to get usage analytics',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -454,7 +452,7 @@ export class ChatContextServer {
       this.logger.error('Failed to bulk import sessions:', error);
       res.status(500).json({
         error: 'Failed to bulk import sessions',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }
@@ -473,7 +471,7 @@ export class ChatContextServer {
       this.logger.error('Failed to cleanup sessions:', error);
       res.status(500).json({
         error: 'Failed to cleanup sessions',
-        message: error.message
+        message: (error as Error).message
       });
     }
   }

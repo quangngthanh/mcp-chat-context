@@ -259,6 +259,8 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
     let resultData: any;
 
     try {
+      console.error('[DEBUG] searchChats called with:', { mode, args, serverUrl: this.config.contextServerUrl });
+      
       switch (mode) {
         case 'search': {
           const params = new URLSearchParams();
@@ -267,16 +269,24 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
           if (args.agentType) params.append('agentType', args.agentType);
           if (args.limit) params.append('limit', args.limit.toString());
 
-          response = await axios.get(
-            `${this.config.contextServerUrl}/api/sessions/search?${params.toString()}`,
-            {
-              headers: {
-                'X-Agent-Id': this.config.agentId,
-                'X-Agent-Type': this.config.agentType
-              },
-              timeout: this.config.timeout
-            }
-          );
+          const url = `${this.config.contextServerUrl}/api/sessions/search?${params.toString()}`;
+          console.error('[DEBUG] Making request to:', url);
+
+          response = await axios.get(url, {
+            headers: {
+              'X-Agent-Id': this.config.agentId,
+              'X-Agent-Type': this.config.agentType
+            },
+            timeout: this.config.timeout
+          })
+            .then(res => {
+              console.error('[DEBUG] Request successful:', res.status, res.data);
+              return res;
+            })
+            .catch(err => {
+              console.error('[DEBUG] Request failed:', err.response?.status, err.response?.data, err.message);
+              throw err;
+            });
           resultData = response.data;
           break;
         }

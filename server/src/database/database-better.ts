@@ -137,8 +137,8 @@ export class DatabaseBetter {
         session_id TEXT NOT NULL,
         event_type TEXT NOT NULL,
         event_data TEXT,
-        timestamp TEXT NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+        timestamp TEXT NOT NULL
+        -- FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_session_analytics_session_id ON session_analytics(session_id);
@@ -345,14 +345,6 @@ export class DatabaseBetter {
 
     const stmt = this.db.prepare(sql);
     const results = stmt.all(...params) as SearchResult[];
-
-    // Log analytics event
-    if (filters.query) {
-      this.logAnalyticsEvent('search', 'searched', { 
-        query: filters.query,
-        results_count: results.length 
-      });
-    }
 
     return results;
   }

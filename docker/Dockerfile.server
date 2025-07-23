@@ -1,0 +1,46 @@
+# Use Node.js LTS version
+FROM node:18-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    sqlite \
+    curl \
+    bash
+
+# Create app directory
+WORKDIR /app
+
+# Create data and logs directories
+RUN mkdir -p /app/data /app/logs
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY src/ ./src/
+
+# Build the application
+RUN npm run build
+
+# Remove dev dependencies and source after build
+RUN npm prune --production && rm -rf src/ tsconfig.json
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Change ownership of app directory
+RUN chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
+
+# Expose port
+EXPOSE 3001
+
+# Start the application
+CMD ["node", "dist/index.js"] 

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  chat-context-server:
+    build:
+      context: ../server
+      dockerfile: ../docker/Dockerfile.server
+    container_name: chat-context-server
+    ports:
+      - "3306:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DB_PATH=/app/data/chat-context.db
+      - LOG_LEVEL=info
+    volumes:
+      - chat_context_data:/app/data
+      - chat_context_logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  chat_context_data:
+    driver: local
+  chat_context_logs:
+    driver: local
+  redis_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  default:
+    name: chat-context-network 

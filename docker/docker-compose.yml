@@ -7,7 +7,7 @@ services:
       dockerfile: ../docker/Dockerfile.server
     container_name: chat-context-server
     ports:
-      - "3306:3001"
+      - "3110:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -29,10 +29,6 @@ volumes:
   chat_context_data:
     driver: local
   chat_context_logs:
-    driver: local
-  redis_data:
-    driver: local
-  nginx_logs:
     driver: local
 
 networks:

@@ -25,9 +25,7 @@ async function startServer() {
     
     // CORS configuration
     app.use(cors({
-      origin: process.env.ALLOWED_ORIGINS ? 
-        process.env.ALLOWED_ORIGINS.split(',') : 
-        ['http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: true, // Allow all domains
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Agent-Id', 'X-Agent-Type']

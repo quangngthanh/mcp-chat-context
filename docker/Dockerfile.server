@@ -17,8 +17,8 @@ RUN mkdir -p /app/data /app/logs
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including dev dependencies needed for build)
+RUN npm ci
 
 # Copy source code
 COPY src/ ./src/

@@ -4,7 +4,7 @@
       "command": "node",
       "args": ["D:/Working/MCP/my-mcp/chat-context/client/dist/index.js"],
       "env": {
-        "CONTEXT_SERVER_URL": "http://localhost:3001",
+        "CONTEXT_SERVER_URL": "https://chat-context.wishen.top",
         "AGENT_ID": "cursor-1",
         "AGENT_TYPE": "cursor",
         "REQUEST_TIMEOUT": "30000",

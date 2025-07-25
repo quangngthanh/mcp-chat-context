@@ -92,11 +92,17 @@ async function startServer() {
     const server = app.listen(Number(PORT), HOST, () => {
       logger.info(`🚀 Chat Context Server running on http://${HOST}:${PORT}`);
       logger.info('Available endpoints:');
-      logger.info('  GET  /health           - Health check');
-      logger.info('  POST /api/sessions     - Create chat session');
-      logger.info('  GET  /api/sessions/:id - Get specific session');
-      logger.info('  GET  /api/sessions/search - Search sessions');
-      logger.info('  GET  /api/sessions/recent - Get recent sessions');
+      logger.info('  GET  /health                    - Health check');
+      logger.info('  POST /api/sessions              - Create chat session');
+      logger.info('  GET  /api/sessions/:id          - Get specific session');
+      logger.info('  PUT  /api/sessions/:id          - Update session');
+      logger.info('  DELETE /api/sessions/:id        - Delete session');
+      logger.info('  GET  /api/sessions/search       - Search sessions');
+      logger.info('  GET  /api/sessions/recent       - Get recent sessions');
+      logger.info('  GET  /api/sessions/by-agent/:id - Get sessions by agent');
+      logger.info('  POST /api/sessions/find-similar - Find similar sessions');
+      logger.info('  POST /api/sessions/cleanup      - Cleanup old sessions');
+      logger.info('  GET  /api/analytics/stats       - Get analytics stats');
     });
     
     // Graceful shutdown

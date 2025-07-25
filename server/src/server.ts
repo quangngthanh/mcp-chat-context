@@ -1,7 +1,6 @@
 import express, { Request, Response, Router } from 'express';
 import { DatabaseBetter as Database } from './database/database-better';
 import { Logger } from './utils/logger';
-import { ChatContentProcessor } from './utils/chat-processor';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { validateSessionData, validateSearchParams } from './utils/validation';
 
@@ -9,13 +8,11 @@ export class ChatContextServer {
   private db: Database;
   private logger: Logger;
   private router: Router;
-  private chatProcessor: ChatContentProcessor;
   private rateLimiter: RateLimiterMemory;
 
   constructor() {
     this.logger = new Logger('ChatContextServer');
     this.db = new Database();
-    this.chatProcessor = new ChatContentProcessor();
     this.router = express.Router();
     
     // Rate limiting: 100 requests per minute per IP
@@ -30,7 +27,7 @@ export class ChatContextServer {
   async initialize(): Promise<void> {
     try {
       await this.db.initialize();
-      this.logger.info('Chat Context Server initialized successfully');
+      this.logger.info('✅ Chat Context Server initialized');
     } catch (error) {
       this.logger.error('Failed to initialize Chat Context Server:', error);
       throw error;
@@ -55,23 +52,20 @@ export class ChatContextServer {
     // Session Management Routes
     this.router.post('/sessions', this.createSession.bind(this));
     
-    // Search & Query Routes (phải đi TRƯỚC :id routes)
+    // Search & Query Routes
     this.router.get('/sessions/search', this.searchSessions.bind(this));
     this.router.get('/sessions/recent', this.getRecentSessions.bind(this));
-    this.router.post('/sessions/find-similar', this.findSimilarSessions.bind(this));
     this.router.get('/sessions/by-agent/:agentId', this.getSessionsByAgent.bind(this));
-    this.router.post('/sessions/merge', this.mergeSessions.bind(this));
-    this.router.post('/sessions/bulk-import', this.bulkImportSessions.bind(this));
-    this.router.post('/sessions/cleanup', this.cleanupOldSessions.bind(this));
+    this.router.post('/sessions/find-similar', this.findSimilarSessions.bind(this));
+    this.router.post('/sessions/cleanup', this.cleanupSessions.bind(this));
     
-    // Generic Session Routes (phải đi SAU specific routes)
+    // Generic Session Routes
     this.router.get('/sessions/:id', this.getSession.bind(this));
     this.router.put('/sessions/:id', this.updateSession.bind(this));
     this.router.delete('/sessions/:id', this.deleteSession.bind(this));
 
     // Analytics Routes
     this.router.get('/analytics/stats', this.getAnalytics.bind(this));
-    this.router.get('/analytics/usage', this.getUsageAnalytics.bind(this));
   }
 
   private async createSession(req: Request, res: Response): Promise<void> {
@@ -80,7 +74,6 @@ export class ChatContextServer {
         title,
         agentId,
         agentType,
-        participants,
         chatContent,
         projectContext,
         tags = []
@@ -93,37 +86,29 @@ export class ChatContextServer {
         return;
       }
 
-      // Process and compress chat content
-      const processedContent = await this.chatProcessor.processContent(chatContent);
-
+      // NO PROCESSING - LƯU RAW CONTENT TRỰC TIẾP
       const sessionData = {
-        title: title || processedContent.generatedTitle,
+        title: title || `Chat Session - ${new Date().toISOString().split('T')[0]}`,
         agent_id: agentId,
         agent_type: agentType,
-        participants: JSON.stringify(participants || [agentType, 'user']),
         project_context: projectContext,
-        context_summary: processedContent.summary,
-        key_topics: JSON.stringify(processedContent.keyTopics),
-        decisions_made: JSON.stringify(processedContent.decisions),
-        code_snippets: JSON.stringify(processedContent.codeSnippets),
-        tags: JSON.stringify(tags),
-        session_hash: processedContent.contentHash
+        original_content: chatContent, // RAW CONTENT - KHÔNG XỬ LÝ GÌ CẢ
+        tags: JSON.stringify(tags)
       };
 
       const sessionId = await this.db.createSession(sessionData);
 
-      this.logger.info(`Session created: ${sessionId}`, {
+      this.logger.info(`✅ Session created: ${sessionId}`, {
         agentId,
         agentType,
         projectContext,
-        topicsCount: processedContent.keyTopics.length
+        contentLength: chatContent.length
       });
 
       res.status(201).json({
         sessionId,
         title: sessionData.title,
-        summary: processedContent.summary,
-        keyTopics: processedContent.keyTopics,
+        originalContentLength: chatContent.length,
         createdAt: new Date().toISOString()
       });
 
@@ -146,14 +131,10 @@ export class ChatContextServer {
         return;
       }
 
-      // Parse JSON fields for response
+      // TRẢ VỀ TOÀN BỘ - KHÔNG XỬ LÝ GÌ
       const responseSession = {
         ...session,
-        participants: JSON.parse(session.participants),
-        key_topics: JSON.parse(session.key_topics),
-        decisions_made: JSON.parse(session.decisions_made),
-        code_snippets: JSON.parse(session.code_snippets),
-        tags: JSON.parse(session.tags)
+        tags: JSON.parse(session.tags) // Chỉ parse JSON tags
       };
 
       res.json(responseSession);
@@ -172,27 +153,8 @@ export class ChatContextServer {
       const { id } = req.params;
       const updates = req.body;
 
-      // Validate update data
-      const validationError = validateSessionData(updates, true);
-      if (validationError) {
-        res.status(400).json({ error: validationError });
-        return;
-      }
-
       // Process JSON fields
-      if (updates.participants) {
-        updates.participants = JSON.stringify(updates.participants);
-      }
-      if (updates.key_topics) {
-        updates.key_topics = JSON.stringify(updates.key_topics);
-      }
-      if (updates.decisions_made) {
-        updates.decisions_made = JSON.stringify(updates.decisions_made);
-      }
-      if (updates.code_snippets) {
-        updates.code_snippets = JSON.stringify(updates.code_snippets);
-      }
-      if (updates.tags) {
+      if (updates.tags && Array.isArray(updates.tags)) {
         updates.tags = JSON.stringify(updates.tags);
       }
 
@@ -270,10 +232,6 @@ export class ChatContextServer {
       // Parse JSON fields for response
       const responseResults = results.map(session => ({
         ...session,
-        participants: JSON.parse(session.participants),
-        key_topics: JSON.parse(session.key_topics),
-        decisions_made: JSON.parse(session.decisions_made),
-        code_snippets: JSON.parse(session.code_snippets),
         tags: JSON.parse(session.tags)
       }));
 
@@ -303,10 +261,6 @@ export class ChatContextServer {
       // Parse JSON fields for response
       const responseSessions = sessions.map(session => ({
         ...session,
-        participants: JSON.parse(session.participants),
-        key_topics: JSON.parse(session.key_topics),
-        decisions_made: JSON.parse(session.decisions_made),
-        code_snippets: JSON.parse(session.code_snippets),
         tags: JSON.parse(session.tags)
       }));
 
@@ -316,39 +270,6 @@ export class ChatContextServer {
       this.logger.error('Failed to get recent sessions:', error);
       res.status(500).json({
         error: 'Failed to get recent sessions',
-        message: (error as Error).message
-      });
-    }
-  }
-
-  private async findSimilarSessions(req: Request, res: Response): Promise<void> {
-    try {
-      const { content, limit = 5 } = req.body;
-
-      if (!content) {
-        res.status(400).json({ error: 'Content is required for similarity search' });
-        return;
-      }
-
-      // Process content to extract key terms
-      const processedContent = await this.chatProcessor.processContent(content);
-      const searchQuery = processedContent.keyTopics.join(' ');
-
-      const results = await this.db.searchSessions({
-        query: searchQuery,
-        limit: parseInt(limit as string, 10)
-      });
-
-      res.json({
-        similarSessions: results,
-        basedOn: processedContent.keyTopics,
-        count: results.length
-      });
-
-    } catch (error) {
-      this.logger.error('Failed to find similar sessions:', error);
-      res.status(500).json({
-        error: 'Failed to find similar sessions',
         message: (error as Error).message
       });
     }
@@ -364,7 +285,13 @@ export class ChatContextServer {
         parseInt(limit as string, 10)
       );
 
-      res.json(sessions);
+      // Parse JSON fields for response
+      const responseSessions = sessions.map(session => ({
+        ...session,
+        tags: JSON.parse(session.tags)
+      }));
+
+      res.json(responseSessions);
 
     } catch (error) {
       this.logger.error('Failed to get sessions by agent:', error);
@@ -375,31 +302,127 @@ export class ChatContextServer {
     }
   }
 
-  private async mergeSessions(req: Request, res: Response): Promise<void> {
+  private async findSimilarSessions(req: Request, res: Response): Promise<void> {
     try {
-      const { sessionIds, newTitle } = req.body;
+      const { content, limit = 5 } = req.body;
 
-      if (!sessionIds || sessionIds.length < 2) {
-        res.status(400).json({ 
-          error: 'At least 2 session IDs are required for merging' 
-        });
+      if (!content || typeof content !== 'string') {
+        res.status(400).json({ error: 'Content is required and must be a string' });
         return;
       }
 
-      // This is a complex operation that would merge multiple sessions
-      // For now, return not implemented
-      res.status(501).json({
-        error: 'Session merging not yet implemented',
-        plannedFor: 'v1.1.0'
+      // Use basic similarity search based on content
+      const similarSessions = await this.db.findSimilarSessions(content, limit);
+
+      // Parse JSON fields for response
+      const responseSessions = similarSessions.map(session => ({
+        ...session,
+        tags: JSON.parse(session.tags)
+      }));
+
+      // Extract key terms from the content for "basedOn" field
+      const basedOn = this.extractKeyTerms(content);
+
+      res.json({
+        similarSessions: responseSessions,
+        count: responseSessions.length,
+        basedOn: basedOn
       });
 
     } catch (error) {
-      this.logger.error('Failed to merge sessions:', error);
+      this.logger.error('Failed to find similar sessions:', error);
       res.status(500).json({
-        error: 'Failed to merge sessions',
+        error: 'Failed to find similar sessions',
         message: (error as Error).message
       });
     }
+  }
+
+  private async cleanupSessions(req: Request, res: Response): Promise<void> {
+    try {
+      const { 
+        olderThanDays = 30, 
+        agentType, 
+        projectContext 
+      } = req.body;
+
+      if (typeof olderThanDays !== 'number' || olderThanDays < 1) {
+        res.status(400).json({ error: 'olderThanDays must be a positive number' });
+        return;
+      }
+
+      let deletedCount = 0;
+      let message = '';
+
+      if (agentType && projectContext) {
+        // Delete by both agent and project
+        deletedCount = await this.db.deleteSessionsByFilters({
+          olderThanDays,
+          agentType,
+          projectContext
+        });
+        message = `Deleted sessions older than ${olderThanDays} days for agent "${agentType}" and project "${projectContext}"`;
+
+      } else if (agentType) {
+        // Delete by agent type with date filter
+        deletedCount = await this.db.deleteSessionsByFilters({
+          olderThanDays,
+          agentType
+        });
+        message = `Deleted sessions older than ${olderThanDays} days for agent "${agentType}"`;
+
+      } else if (projectContext) {
+        // Delete by project with date filter
+        deletedCount = await this.db.deleteSessionsByFilters({
+          olderThanDays,
+          projectContext
+        });
+        message = `Deleted sessions older than ${olderThanDays} days for project "${projectContext}"`;
+
+      } else {
+        // Delete only by date
+        deletedCount = await this.db.deleteOldSessions(olderThanDays);
+        message = `Deleted sessions older than ${olderThanDays} days`;
+      }
+
+      this.logger.info(`Cleanup completed: ${deletedCount} sessions deleted`);
+
+      res.json({
+        deletedCount,
+        message,
+        olderThanDays,
+        agentType: agentType || null,
+        projectContext: projectContext || null
+      });
+
+    } catch (error) {
+      this.logger.error('Failed to cleanup sessions:', error);
+      res.status(500).json({
+        error: 'Failed to cleanup sessions',
+        message: (error as Error).message
+      });
+    }
+  }
+
+  private extractKeyTerms(content: string): string[] {
+    // Simple key term extraction
+    const words = content
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3)
+      .filter(word => !['the', 'and', 'that', 'this', 'with', 'from', 'they', 'have', 'been', 'said', 'each', 'which', 'their', 'will', 'about', 'would', 'there', 'could', 'other'].includes(word));
+
+    // Get most frequent words
+    const wordCount: Record<string, number> = {};
+    words.forEach(word => {
+      wordCount[word] = (wordCount[word] || 0) + 1;
+    });
+
+    return Object.entries(wordCount)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([word]) => word);
   }
 
   private async getAnalytics(req: Request, res: Response): Promise<void> {
@@ -411,66 +434,6 @@ export class ChatContextServer {
       this.logger.error('Failed to get analytics:', error);
       res.status(500).json({
         error: 'Failed to get analytics',
-        message: (error as Error).message
-      });
-    }
-  }
-
-  private async getUsageAnalytics(req: Request, res: Response): Promise<void> {
-    try {
-      // Placeholder for usage analytics
-      res.json({
-        message: 'Usage analytics endpoint - to be implemented',
-        version: '1.0.0'
-      });
-
-    } catch (error) {
-      this.logger.error('Failed to get usage analytics:', error);
-      res.status(500).json({
-        error: 'Failed to get usage analytics',
-        message: (error as Error).message
-      });
-    }
-  }
-
-  private async bulkImportSessions(req: Request, res: Response): Promise<void> {
-    try {
-      const { sessions } = req.body;
-
-      if (!sessions || !Array.isArray(sessions)) {
-        res.status(400).json({ error: 'Sessions array is required' });
-        return;
-      }
-
-      // Placeholder for bulk import
-      res.status(501).json({
-        error: 'Bulk import not yet implemented',
-        plannedFor: 'v1.1.0'
-      });
-
-    } catch (error) {
-      this.logger.error('Failed to bulk import sessions:', error);
-      res.status(500).json({
-        error: 'Failed to bulk import sessions',
-        message: (error as Error).message
-      });
-    }
-  }
-
-  private async cleanupOldSessions(req: Request, res: Response): Promise<void> {
-    try {
-      const { daysOld = 30 } = req.body;
-
-      // Placeholder for cleanup
-      res.status(501).json({
-        error: 'Session cleanup not yet implemented',
-        plannedFor: 'v1.1.0'
-      });
-
-    } catch (error) {
-      this.logger.error('Failed to cleanup sessions:', error);
-      res.status(500).json({
-        error: 'Failed to cleanup sessions',
         message: (error as Error).message
       });
     }

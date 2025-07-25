@@ -13,30 +13,26 @@ export function validateSessionData(data: any, isUpdate: boolean = false): strin
       return 'chatContent is required and must be a string';
     }
 
-    if (data.chatContent.length > 10 * 1024 * 1024) { // 10MB limit
-      return 'chatContent exceeds maximum size of 10MB';
+    if (data.chatContent.length > 50 * 1024 * 1024) { // 50MB limit - TĂNG LIMIT CHO RAW CONTENT
+      return 'chatContent exceeds maximum size of 50MB';
     }
   }
 
-  // Optional field validations (for both create and update)
-  if (data.title && (typeof data.title !== 'string' || data.title.length > 200)) {
-    return 'title must be a string with maximum length of 200 characters';
+  // Optional field validations
+  if (data.title && (typeof data.title !== 'string' || data.title.length > 500)) {
+    return 'title must be a string with maximum length of 500 characters';
   }
 
-  if (data.projectContext && (typeof data.projectContext !== 'string' || data.projectContext.length > 500)) {
-    return 'projectContext must be a string with maximum length of 500 characters';
-  }
-
-  if (data.participants && !Array.isArray(data.participants)) {
-    return 'participants must be an array';
+  if (data.projectContext && (typeof data.projectContext !== 'string' || data.projectContext.length > 1000)) {
+    return 'projectContext must be a string with maximum length of 1000 characters';
   }
 
   if (data.tags && (!Array.isArray(data.tags) || !data.tags.every((tag: any) => typeof tag === 'string'))) {
     return 'tags must be an array of strings';
   }
 
-  if (data.tags && data.tags.length > 20) {
-    return 'maximum of 20 tags allowed';
+  if (data.tags && data.tags.length > 50) { // TĂNG LIMIT CHO TAGS
+    return 'maximum of 50 tags allowed';
   }
 
   return null; // No validation errors
@@ -65,8 +61,8 @@ export function validateSearchParams(query: any): string | null {
 
   if (query.tags && typeof query.tags === 'string') {
     const tags = query.tags.split(',');
-    if (tags.length > 10) {
-      return 'maximum of 10 tags allowed in search';
+    if (tags.length > 20) { // TĂNG LIMIT CHO SEARCH TAGS
+      return 'maximum of 20 tags allowed in search';
     }
   }
 

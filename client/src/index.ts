@@ -5,189 +5,191 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import axios, { AxiosResponse } from 'axios';
-import * as dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
-
-interface ChatContextClientConfig {
-  contextServerUrl: string;
-  agentId: string;
-  agentType: 'claude' | 'cursor' | 'other';
-  timeout?: number;
-}
+import axios from 'axios';
 
 class ChatContextMCPClient {
   private server: Server;
-  private config: ChatContextClientConfig;
+  private serverUrl: string;
 
   constructor() {
-    this.config = {
-      contextServerUrl: process.env.CONTEXT_SERVER_URL || 'http://localhost:3001',
-      agentId: process.env.AGENT_ID || 'default-agent',
-      agentType: (process.env.AGENT_TYPE as 'claude' | 'cursor' | 'other') || 'other',
-      timeout: parseInt(process.env.REQUEST_TIMEOUT || '30000', 10)
-    };
-
-    this.server = new Server({
-      name: 'chat-context-client',
-      version: '1.0.0',
-    }, {
-      capabilities: {
-        tools: {},
+    this.server = new Server(
+      {
+        name: 'chat-context',
+        version: '1.0.0',
       },
-    });
-
-    this.setupErrorHandling();
-    this.setupTools();
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
+    this.serverUrl = process.env.CHAT_CONTEXT_SERVER_URL || 'http://localhost:3001';
+    this.setupHandlers();
   }
 
-  private setupErrorHandling(): void {
-    this.server.onerror = (error) => {
-      console.error('[MCP Client Error]', error);
-    };
-
-    process.on('SIGINT', async () => {
-      await this.server.close();
-      process.exit(0);
-    });
+  private async checkServerHealth(): Promise<boolean> {
+    try {
+      const response = await axios.get(`${this.serverUrl}/health`, { timeout: 5000 });
+      return response.status === 200;
+    } catch (error) {
+      return false;
+    }
   }
 
-  private setupTools(): void {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [
-        {
-          name: 'save_chat_session',
-          description: 'Lưu session chat hiện tại lên server với phân tích nội dung tự động',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              title: {
-                type: 'string',
-                description: 'Tiêu đề tùy chọn cho session (sẽ tự tạo nếu không có)'
+  private setupHandlers(): void {
+    // List available tools
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      return {
+        tools: [
+          {
+            name: 'save_chat_session',
+            description: 'Lưu session chat hiện tại lên server với phân tích nội dung tự động',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                chatContent: {
+                  type: 'string',
+                  description: 'Nội dung chat đầy đủ cần lưu trữ'
+                },
+                title: {
+                  type: 'string',
+                  description: 'Tiêu đề tùy chọn cho session (sẽ tự tạo nếu không có)'
+                },
+                projectContext: {
+                  type: 'string',
+                  description: 'Context dự án hiện tại (path, tên project, etc.)'
+                },
+                tags: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Tags để phân loại session'
+                }
               },
-              chatContent: {
-                type: 'string',
-                description: 'Nội dung chat đầy đủ cần lưu trữ'
-              },
-              projectContext: {
-                type: 'string',
-                description: 'Context dự án hiện tại (path, tên project, etc.)'
-              },
-              tags: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Tags để phân loại session'
-              }
-            },
-            required: ['chatContent']
-          }
-        },
-        {
-          name: 'search_chats',
-          description: 'Tìm kiếm chat sessions theo nhiều tiêu chí khác nhau (từ khóa, project, recent, etc.)',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              mode: {
-                type: 'string',
-                enum: ['search', 'project', 'recent', 'similar'],
-                default: 'search',
-                description: 'Chế độ tìm kiếm: search (từ khóa), project (theo dự án), recent (gần đây), similar (nội dung tương tự)'
-              },
-              query: {
-                type: 'string',
-                description: 'Từ khóa tìm kiếm (dùng cho mode search/similar)'
-              },
-              projectContext: {
-                type: 'string',
-                description: 'Tên project để lọc (dùng cho mode project)'
-              },
-              content: {
-                type: 'string',
-                description: 'Nội dung để tìm sessions tương tự (dùng cho mode similar)'
-              },
-              agentType: {
-                type: 'string',
-                enum: ['claude', 'cursor', 'other'],
-                description: 'Lọc theo loại agent'
-              },
-              limit: {
-                type: 'number',
-                default: 10,
-                minimum: 1,
-                maximum: 30,
-                description: 'Số lượng kết quả tối đa'
+              required: ['chatContent']
+            }
+          },
+          {
+            name: 'search_chats',
+            description: 'Tìm kiếm chat sessions theo nhiều tiêu chí khác nhau (từ khóa, project, recent, etc.)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                mode: {
+                  type: 'string',
+                  enum: ['search', 'project', 'recent', 'similar'],
+                  description: 'Chế độ tìm kiếm: search (từ khóa), project (theo dự án), recent (gần đây), similar (nội dung tương tự)',
+                  default: 'search'
+                },
+                query: {
+                  type: 'string',
+                  description: 'Từ khóa tìm kiếm (dùng cho mode search/similar)'
+                },
+                projectContext: {
+                  type: 'string',
+                  description: 'Tên project để lọc (dùng cho mode project)'
+                },
+                content: {
+                  type: 'string',
+                  description: 'Nội dung để tìm sessions tương tự (dùng cho mode similar)'
+                },
+                agentType: {
+                  type: 'string',
+                  enum: ['claude', 'cursor', 'other'],
+                  description: 'Lọc theo loại agent'
+                },
+                limit: {
+                  type: 'number',
+                  minimum: 1,
+                  maximum: 30,
+                  default: 10,
+                  description: 'Số lượng kết quả tối đa'
+                }
               }
             }
-          }
-        },
-        {
-          name: 'get_session_details',
-          description: 'Lấy thông tin chi tiết của một session cụ thể',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              sessionId: {
-                type: 'string',
-                description: 'ID của session cần lấy thông tin'
-              }
-            },
-            required: ['sessionId']
-          }
-        },
-        {
-          name: 'delete_session',
-          description: 'Xóa một session cụ thể hoặc dọn dẹp dữ liệu cũ',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              mode: {
-                type: 'string',
-                enum: ['single', 'cleanup'],
-                default: 'single',
-                description: 'Chế độ xóa: single (xóa 1 session), cleanup (dọn dẹp sessions cũ)'
+          },
+          {
+            name: 'get_session_details',
+            description: 'Lấy thông tin chi tiết của một session cụ thể',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sessionId: {
+                  type: 'string',
+                  description: 'ID của session cần lấy thông tin'
+                }
               },
-              sessionId: {
-                type: 'string',
-                description: 'ID session cần xóa (dùng cho mode single)'
-              },
-              olderThanDays: {
-                type: 'number',
-                default: 30,
-                minimum: 1,
-                description: 'Xóa sessions cũ hơn X ngày (dùng cho mode cleanup)'
-              },
-              agentType: {
-                type: 'string',
-                enum: ['claude', 'cursor', 'other'],
-                description: 'Chỉ xóa sessions của agent cụ thể'
-              },
-              projectContext: {
-                type: 'string',
-                description: 'Chỉ xóa sessions của project cụ thể'
+              required: ['sessionId']
+            }
+          },
+          {
+            name: 'delete_session',
+            description: 'Xóa một session cụ thể hoặc dọn dẹp dữ liệu cũ',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                mode: {
+                  type: 'string',
+                  enum: ['single', 'cleanup'],
+                  description: 'Chế độ xóa: single (xóa 1 session), cleanup (dọn dẹp sessions cũ)',
+                  default: 'single'
+                },
+                sessionId: {
+                  type: 'string',
+                  description: 'ID session cần xóa (dùng cho mode single)'
+                },
+                olderThanDays: {
+                  type: 'number',
+                  minimum: 1,
+                  default: 30,
+                  description: 'Xóa sessions cũ hơn X ngày (dùng cho mode cleanup)'
+                },
+                projectContext: {
+                  type: 'string',
+                  description: 'Chỉ xóa sessions của project cụ thể'
+                },
+                agentType: {
+                  type: 'string',
+                  enum: ['claude', 'cursor', 'other'],
+                  description: 'Chỉ xóa sessions của agent cụ thể'
+                }
               }
             }
+          },
+          {
+            name: 'get_chat_analytics',
+            description: 'Lấy thống kê tổng quan về chat sessions',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                random_string: {
+                  type: 'string',
+                  description: 'Dummy parameter for no-parameter tools'
+                }
+              },
+              required: ['random_string']
+            }
           }
-        },
-        {
-          name: 'get_chat_analytics',
-          description: 'Lấy thống kê tổng quan về chat sessions',
-          inputSchema: {
-            type: 'object',
-            properties: {}
-          }
-        }
-      ],
-    }));
+        ]
+      };
+    });
 
+    // Handle tool calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
-
       try {
+        // Check server health before making requests
+        const isServerHealthy = await this.checkServerHealth();
+        if (!isServerHealthy) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: '❌ **Chat Context Server không khả dụng**\n\nServer có thể chưa được khởi động hoặc không thể kết nối.\nVui lòng kiểm tra server tại: ' + this.serverUrl
+              }
+            ]
+          };
+        }
         switch (name) {
           case 'save_chat_session':
             return await this.saveChatSession(args);
@@ -198,18 +200,19 @@ class ChatContextMCPClient {
           case 'delete_session':
             return await this.deleteSession(args);
           case 'get_chat_analytics':
-            return await this.getChatAnalytics(args);
+            return await this.getChatAnalytics();
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return {
-          content: [{
-            type: 'text',
-            text: `❌ Lỗi: ${errorMessage}`
-          }],
-          isError: true
+          content: [
+            {
+              type: 'text',
+              text: `❌ **Lỗi khi thực hiện ${name}:**\n\n${errorMessage}`
+            }
+          ]
         };
       }
     });
@@ -218,29 +221,30 @@ class ChatContextMCPClient {
   private async saveChatSession(args: any) {
     const requestData = {
       ...args,
-      agentId: this.config.agentId,
-      agentType: this.config.agentType,
-      participants: [this.config.agentType, 'user']
+      agentId: 'chat-context-client', // Assuming a default agent ID for this client
+      agentType: 'other', // Assuming a default agent type
+      participants: ['chat-context-client', 'user'] // Assuming a default participant
     };
 
-    const response = await axios.post(
-      `${this.config.contextServerUrl}/api/sessions`,
-      requestData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Agent-Id': this.config.agentId,
-          'X-Agent-Type': this.config.agentType
-        },
-        timeout: this.config.timeout
-      }
-    );
+    try {
+      const response = await axios.post(
+        `${this.serverUrl}/api/sessions`,
+        requestData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Agent-Id': 'chat-context-client',
+            'X-Agent-Type': 'other'
+          },
+          timeout: 30000 // Use a default timeout
+        }
+      );
 
-    const data = response.data;
-    return {
-      content: [{
-        type: 'text',
-        text: `✅ **Đã lưu session thành công!**
+      const data = response.data;
+      return {
+        content: [{
+          type: 'text',
+          text: `✅ **Đã lưu session thành công!**
 
 **Session ID:** ${data.sessionId}
 **Tiêu đề:** ${data.title}
@@ -249,17 +253,27 @@ class ChatContextMCPClient {
 **Thời gian:** ${data.createdAt}
 
 Session này đã được lưu trữ và có thể tìm kiếm được trong tương lai.`
-      }]
-    };
+        }]
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ **Lỗi khi lưu session:**\n\n${errorMessage}`
+        }],
+        isError: true
+      };
+    }
   }
 
   private async searchChats(args: any) {
     const mode = args.mode || 'search';
-    let response: AxiosResponse;
+    let response: any;
     let resultData: any;
 
     try {
-      console.error('[DEBUG] searchChats called with:', { mode, args, serverUrl: this.config.contextServerUrl });
+      console.error('[DEBUG] searchChats called with:', { mode, args, serverUrl: this.serverUrl });
       
       switch (mode) {
         case 'search': {
@@ -269,15 +283,15 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
           if (args.agentType) params.append('agentType', args.agentType);
           if (args.limit) params.append('limit', args.limit.toString());
 
-          const url = `${this.config.contextServerUrl}/api/sessions/search?${params.toString()}`;
+          const url = `${this.serverUrl}/api/sessions/search?${params.toString()}`;
           console.error('[DEBUG] Making request to:', url);
 
           response = await axios.get(url, {
             headers: {
-              'X-Agent-Id': this.config.agentId,
-              'X-Agent-Type': this.config.agentType
+              'X-Agent-Id': 'chat-context-client',
+              'X-Agent-Type': 'other'
             },
-            timeout: this.config.timeout
+            timeout: 30000
           })
             .then(res => {
               console.error('[DEBUG] Request successful:', res.status, res.data);
@@ -298,13 +312,13 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
           if (args.limit) params.append('limit', args.limit.toString());
 
           response = await axios.get(
-            `${this.config.contextServerUrl}/api/sessions/search?${params.toString()}`,
+            `${this.serverUrl}/api/sessions/search?${params.toString()}`,
             {
               headers: {
-                'X-Agent-Id': this.config.agentId,
-                'X-Agent-Type': this.config.agentType
+                'X-Agent-Id': 'chat-context-client',
+                'X-Agent-Type': 'other'
               },
-              timeout: this.config.timeout
+              timeout: 30000
             }
           );
           resultData = response.data;
@@ -317,13 +331,13 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
           if (args.limit) params.append('limit', args.limit.toString());
 
           response = await axios.get(
-            `${this.config.contextServerUrl}/api/sessions/recent?${params.toString()}`,
+            `${this.serverUrl}/api/sessions/recent?${params.toString()}`,
             {
               headers: {
-                'X-Agent-Id': this.config.agentId,
-                'X-Agent-Type': this.config.agentType
+                'X-Agent-Id': 'chat-context-client',
+                'X-Agent-Type': 'other'
               },
-              timeout: this.config.timeout
+              timeout: 30000
             }
           );
           resultData = { results: response.data, count: response.data.length };
@@ -332,7 +346,7 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
 
         case 'similar': {
           response = await axios.post(
-            `${this.config.contextServerUrl}/api/sessions/find-similar`,
+            `${this.serverUrl}/api/sessions/find-similar`,
             {
               content: args.content,
               limit: args.limit || 5
@@ -340,10 +354,10 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
             {
               headers: {
                 'Content-Type': 'application/json',
-                'X-Agent-Id': this.config.agentId,
-                'X-Agent-Type': this.config.agentType
+                'X-Agent-Id': 'chat-context-client',
+                'X-Agent-Type': 'other'
               },
-              timeout: this.config.timeout
+              timeout: 30000
             }
           );
           // Transform similar API response to match search format
@@ -418,23 +432,24 @@ ${sessions}
   }
 
   private async getSessionDetails(args: any) {
-    const response = await axios.get(
-      `${this.config.contextServerUrl}/api/sessions/${args.sessionId}`,
-      {
-        headers: {
-          'X-Agent-Id': this.config.agentId,
-          'X-Agent-Type': this.config.agentType
-        },
-        timeout: this.config.timeout
-      }
-    );
+    try {
+      const response = await axios.get(
+        `${this.serverUrl}/api/sessions/${args.sessionId}`,
+        {
+          headers: {
+            'X-Agent-Id': 'chat-context-client',
+            'X-Agent-Type': 'other'
+          },
+          timeout: 30000
+        }
+      );
 
-    const session = response.data;
+      const session = response.data;
 
-    return {
-      content: [{
-        type: 'text',
-        text: `📋 **Chi tiết Session: ${session.title}**
+      return {
+        content: [{
+          type: 'text',
+          text: `📋 **Chi tiết Session: ${session.title}**
 
 **ID:** ${session.id}
 **Agent:** ${session.agent_type} (${session.agent_id})
@@ -454,8 +469,18 @@ ${session.decisions_made?.length > 0 ? session.decisions_made.join('\n- ') : 'Kh
 
 **Code snippets:** ${session.code_snippets?.length || 0} đoạn code
 **Tags:** ${session.tags?.join(', ') || 'Không có'}`
-      }]
-    };
+        }]
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ **Lỗi khi lấy chi tiết session:**\n\n${errorMessage}`
+        }],
+        isError: true
+      };
+    }
   }
 
   private async deleteSession(args: any) {
@@ -468,13 +493,13 @@ ${session.decisions_made?.length > 0 ? session.decisions_made.join('\n- ') : 'Kh
         }
 
         const response = await axios.delete(
-          `${this.config.contextServerUrl}/api/sessions/${args.sessionId}`,
+          `${this.serverUrl}/api/sessions/${args.sessionId}`,
           {
             headers: {
-              'X-Agent-Id': this.config.agentId,
-              'X-Agent-Type': this.config.agentType
+              'X-Agent-Id': 'chat-context-client',
+              'X-Agent-Type': 'other'
             },
-            timeout: this.config.timeout
+            timeout: 30000
           }
         );
 
@@ -497,15 +522,15 @@ Session đã được xóa khỏi hệ thống.`
         if (args.projectContext) requestData.projectContext = args.projectContext;
 
         const response = await axios.post(
-          `${this.config.contextServerUrl}/api/sessions/cleanup`,
+          `${this.serverUrl}/api/sessions/cleanup`,
           requestData,
           {
             headers: {
               'Content-Type': 'application/json',
-              'X-Agent-Id': this.config.agentId,
-              'X-Agent-Type': this.config.agentType
+              'X-Agent-Id': 'chat-context-client',
+              'X-Agent-Type': 'other'
             },
-            timeout: this.config.timeout
+            timeout: 30000
           }
         );
 
@@ -531,42 +556,49 @@ ${message || 'Hệ thống đã được làm sạch.'}`
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Delete failed: ${errorMessage}`);
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ **Lỗi khi xóa session:**\n\n${errorMessage}`
+        }],
+        isError: true
+      };
     }
   }
 
-  private async getChatAnalytics(args: any) {
-    const response = await axios.get(
-      `${this.config.contextServerUrl}/api/analytics/stats`,
-      {
-        headers: {
-          'X-Agent-Id': this.config.agentId,
-          'X-Agent-Type': this.config.agentType
-        },
-        timeout: this.config.timeout
-      }
-    );
+  private async getChatAnalytics() {
+    try {
+      const response = await axios.get(
+        `${this.serverUrl}/api/analytics/stats`,
+        {
+          headers: {
+            'X-Agent-Id': 'chat-context-client',
+            'X-Agent-Type': 'other'
+          },
+          timeout: 30000
+        }
+      );
 
-    const stats = response.data;
+      const stats = response.data;
 
-    const agentStatsText = Object.entries(stats.sessions_by_agent)
-      .map(([agent, count]) => `- ${agent}: ${count} sessions`)
-      .join('\n');
+      const agentStatsText = Object.entries(stats.sessions_by_agent)
+        .map(([agent, count]) => `- ${agent}: ${count} sessions`)
+        .join('\n');
 
-    const projectStatsText = Object.entries(stats.sessions_by_project)
-      .slice(0, 5)
-      .map(([project, count]) => `- ${project}: ${count} sessions`)
-      .join('\n');
+      const projectStatsText = Object.entries(stats.sessions_by_project)
+        .slice(0, 5)
+        .map(([project, count]) => `- ${project}: ${count} sessions`)
+        .join('\n');
 
-    const topTopicsText = stats.most_common_topics
-      .slice(0, 10)
-      .map(({ topic, count }: any) => `- ${topic}: ${count}`)
-      .join('\n');
+      const topTopicsText = stats.most_common_topics
+        .slice(0, 10)
+        .map(({ topic, count }: any) => `- ${topic}: ${count}`)
+        .join('\n');
 
-    return {
-      content: [{
-        type: 'text',
-        text: `📊 **Thống kê Chat Context System**
+      return {
+        content: [{
+          type: 'text',
+          text: `📊 **Thống kê Chat Context System**
 
 **Tổng số sessions:** ${stats.total_sessions}
 
@@ -580,8 +612,18 @@ ${projectStatsText || 'Chưa có data'}
 ${topTopicsText || 'Chưa có data'}
 
 **Hoạt động gần đây:** ${stats.recent_activity?.length || 0} ngày có hoạt động`
-      }]
-    };
+        }]
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ **Lỗi khi lấy thống kê:**\n\n${errorMessage}`
+        }],
+        isError: true
+      };
+    }
   }
 
   async run(): Promise<void> {

@@ -24,7 +24,7 @@ class ChatContextMCPClient {
         },
       }
     );
-    this.serverUrl = process.env.CHAT_CONTEXT_SERVER_URL || 'http://localhost:3001';
+    this.serverUrl = process.env.CONTEXT_SERVER_URL || 'http://localhost:3001';
     this.setupHandlers();
   }
 
@@ -456,19 +456,13 @@ ${sessions}
 **Thời gian tạo:** ${new Date(session.created_at).toLocaleString()}
 **Cập nhật:** ${new Date(session.updated_at).toLocaleString()}
 **Project:** ${session.project_context || 'N/A'}
-**Người tham gia:** ${session.participants?.join(', ') || 'N/A'}
+**Tags:** ${session.tags?.join(', ') || 'Không có'}
 
-**Tóm tắt:**
-${session.context_summary}
+---
 
-**Chủ đề chính:**
-${session.key_topics?.join(', ') || 'N/A'}
+## **📄 NỘI DUNG ĐẦY ĐỦ:**
 
-**Quyết định/Kết luận:**
-${session.decisions_made?.length > 0 ? session.decisions_made.join('\n- ') : 'Không có'}
-
-**Code snippets:** ${session.code_snippets?.length || 0} đoạn code
-**Tags:** ${session.tags?.join(', ') || 'Không có'}`
+${session.original_content || 'Không có nội dung'}`
         }]
       };
     } catch (error) {

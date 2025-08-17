@@ -11,12 +11,15 @@ import axios from 'axios';
 class ChatContextMCPClient {
   private server: Server;
   private serverUrl: string;
+  private agentId: string;
+  private agentType: string;
+  private requestTimeout: number;
 
   constructor() {
     this.server = new Server(
       {
         name: 'chat-context',
-        version: '1.0.0',
+        version: '1.1.0',
       },
       {
         capabilities: {
@@ -25,6 +28,17 @@ class ChatContextMCPClient {
       }
     );
     this.serverUrl = process.env.CONTEXT_SERVER_URL || 'http://localhost:3001';
+    this.agentId = process.env.AGENT_ID || 'chat-context-client';
+    this.agentType = process.env.AGENT_TYPE || 'other';
+    this.requestTimeout = parseInt(process.env.REQUEST_TIMEOUT || '30000');
+    
+    // Log configuration for debugging
+    console.error('[CONFIG] Chat Context MCP Client Configuration:');
+    console.error(`[CONFIG] Server URL: ${this.serverUrl}`);
+    console.error(`[CONFIG] Agent ID: ${this.agentId}`);
+    console.error(`[CONFIG] Agent Type: ${this.agentType}`);
+    console.error(`[CONFIG] Request Timeout: ${this.requestTimeout}ms`);
+    
     this.setupHandlers();
   }
 
@@ -221,9 +235,9 @@ class ChatContextMCPClient {
   private async saveChatSession(args: any) {
     const requestData = {
       ...args,
-      agentId: 'chat-context-client', // Assuming a default agent ID for this client
-      agentType: 'other', // Assuming a default agent type
-      participants: ['chat-context-client', 'user'] // Assuming a default participant
+      agentId: this.agentId,
+      agentType: this.agentType,
+      participants: [this.agentId, 'user']
     };
 
     try {
@@ -233,10 +247,10 @@ class ChatContextMCPClient {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Agent-Id': 'chat-context-client',
-            'X-Agent-Type': 'other'
+            'X-Agent-Id': this.agentId,
+            'X-Agent-Type': this.agentType
           },
-          timeout: 30000 // Use a default timeout
+          timeout: this.requestTimeout
         }
       );
 
@@ -288,10 +302,10 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
 
           response = await axios.get(url, {
             headers: {
-              'X-Agent-Id': 'chat-context-client',
-              'X-Agent-Type': 'other'
+              'X-Agent-Id': this.agentId,
+              'X-Agent-Type': this.agentType
             },
-            timeout: 30000
+            timeout: this.requestTimeout
           })
             .then(res => {
               console.error('[DEBUG] Request successful:', res.status, res.data);
@@ -315,10 +329,10 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
             `${this.serverUrl}/api/sessions/search?${params.toString()}`,
             {
               headers: {
-                'X-Agent-Id': 'chat-context-client',
-                'X-Agent-Type': 'other'
+                'X-Agent-Id': this.agentId,
+                'X-Agent-Type': this.agentType
               },
-              timeout: 30000
+              timeout: this.requestTimeout
             }
           );
           resultData = response.data;
@@ -334,10 +348,10 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
             `${this.serverUrl}/api/sessions/recent?${params.toString()}`,
             {
               headers: {
-                'X-Agent-Id': 'chat-context-client',
-                'X-Agent-Type': 'other'
+                'X-Agent-Id': this.agentId,
+                'X-Agent-Type': this.agentType
               },
-              timeout: 30000
+              timeout: this.requestTimeout
             }
           );
           resultData = { results: response.data, count: response.data.length };
@@ -354,10 +368,10 @@ Session này đã được lưu trữ và có thể tìm kiếm được trong t
             {
               headers: {
                 'Content-Type': 'application/json',
-                'X-Agent-Id': 'chat-context-client',
-                'X-Agent-Type': 'other'
+                'X-Agent-Id': this.agentId,
+                'X-Agent-Type': this.agentType
               },
-              timeout: 30000
+              timeout: this.requestTimeout
             }
           );
           // Transform similar API response to match search format
@@ -437,10 +451,10 @@ ${sessions}
         `${this.serverUrl}/api/sessions/${args.sessionId}`,
         {
           headers: {
-            'X-Agent-Id': 'chat-context-client',
-            'X-Agent-Type': 'other'
+            'X-Agent-Id': this.agentId,
+            'X-Agent-Type': this.agentType
           },
-          timeout: 30000
+          timeout: this.requestTimeout
         }
       );
 
@@ -490,10 +504,10 @@ ${session.original_content || 'Không có nội dung'}`
           `${this.serverUrl}/api/sessions/${args.sessionId}`,
           {
             headers: {
-              'X-Agent-Id': 'chat-context-client',
-              'X-Agent-Type': 'other'
+              'X-Agent-Id': this.agentId,
+              'X-Agent-Type': this.agentType
             },
-            timeout: 30000
+            timeout: this.requestTimeout
           }
         );
 
@@ -521,10 +535,10 @@ Session đã được xóa khỏi hệ thống.`
           {
             headers: {
               'Content-Type': 'application/json',
-              'X-Agent-Id': 'chat-context-client',
-              'X-Agent-Type': 'other'
+              'X-Agent-Id': this.agentId,
+              'X-Agent-Type': this.agentType
             },
-            timeout: 30000
+            timeout: this.requestTimeout
           }
         );
 
@@ -566,10 +580,10 @@ ${message || 'Hệ thống đã được làm sạch.'}`
         `${this.serverUrl}/api/analytics/stats`,
         {
           headers: {
-            'X-Agent-Id': 'chat-context-client',
-            'X-Agent-Type': 'other'
+            'X-Agent-Id': this.agentId,
+            'X-Agent-Type': this.agentType
           },
-          timeout: 30000
+          timeout: this.requestTimeout
         }
       );
 

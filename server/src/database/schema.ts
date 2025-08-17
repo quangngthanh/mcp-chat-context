@@ -30,6 +30,10 @@ export interface SessionStats {
   total_sessions: number;
   sessions_by_agent: Record<string, number>;
   sessions_by_project: Record<string, number>;
+  most_common_topics: Array<{
+    topic: string;
+    count: number;
+  }>;
   recent_activity: Array<{
     date: string;
     session_count: number;

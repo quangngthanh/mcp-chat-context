@@ -599,11 +599,95 @@ export class DatabaseBetter {
       sessions_by_project[row.project_context] = row.count;
     });
 
+    // Calculate most common topics
+    const most_common_topics = await this.calculateMostCommonTopics();
+
+    // Calculate recent activity
+    const recent_activity = await this.calculateRecentActivity();
+
     return {
       total_sessions: total.count,
       sessions_by_agent,
       sessions_by_project,
-      recent_activity: []
+      most_common_topics,
+      recent_activity
     };
+  }
+
+  private async calculateMostCommonTopics(): Promise<Array<{ topic: string; count: number }>> {
+    if (!this.db) return [];
+
+    try {
+      // Get all sessions with content
+      const stmt = this.db.prepare('SELECT original_content, tags FROM chat_sessions');
+      const sessions = stmt.all() as { original_content: string; tags: string }[];
+
+      const topicCount: Record<string, number> = {};
+
+      // Process each session
+      sessions.forEach(session => {
+        // Extract topics from content
+        const contentTopics = this.extractKeyTermsFromContent(session.original_content);
+        
+        // Extract topics from tags
+        let tagTopics: string[] = [];
+        try {
+          const parsedTags = JSON.parse(session.tags);
+          if (Array.isArray(parsedTags)) {
+            tagTopics = parsedTags.filter(tag => typeof tag === 'string' && tag.length > 0);
+          }
+        } catch (e) {
+          // Ignore invalid JSON tags
+        }
+
+        // Combine and count all topics
+        [...contentTopics, ...tagTopics].forEach(topic => {
+          const normalizedTopic = topic.toLowerCase().trim();
+          if (normalizedTopic.length > 0) {
+            topicCount[normalizedTopic] = (topicCount[normalizedTopic] || 0) + 1;
+          }
+        });
+      });
+
+      // Convert to array and sort by count
+      return Object.entries(topicCount)
+        .map(([topic, count]) => ({ topic, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10); // Top 10 topics
+
+    } catch (error) {
+      this.logger.warn('Failed to calculate most common topics:', error);
+      return [];
+    }
+  }
+
+  private async calculateRecentActivity(): Promise<Array<{ date: string; session_count: number }>> {
+    if (!this.db) return [];
+
+    try {
+      // Get sessions from last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const cutoffDate = thirtyDaysAgo.toISOString();
+
+      const stmt = this.db.prepare(`
+        SELECT DATE(created_at) as date, COUNT(*) as session_count 
+        FROM chat_sessions 
+        WHERE created_at >= ? 
+        GROUP BY DATE(created_at) 
+        ORDER BY date DESC
+      `);
+      
+      const results = stmt.all(cutoffDate) as { date: string; session_count: number }[];
+      
+      return results.map(row => ({
+        date: row.date,
+        session_count: row.session_count
+      }));
+
+    } catch (error) {
+      this.logger.warn('Failed to calculate recent activity:', error);
+      return [];
+    }
   }
 } 
